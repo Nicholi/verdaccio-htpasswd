@@ -4,20 +4,20 @@
 
 # Verdaccio Module For User Auth Via Htpasswd and Htgroup
 
-`verdaccio-htpasswd-htgroup` is a default authentication plugin for the [Verdaccio](https://github.com/verdaccio/verdaccio).
+`verdaccio-htpasswdhtgroup` is a default authentication plugin for the [Verdaccio](https://github.com/verdaccio/verdaccio).
 
 <!--
 ## Install
 
 As simple as running:
 
-    $ npm install -g verdaccio-htpasswd-htgroup
+    $ npm install -g verdaccio-htpasswdhtgroup
 -->
 
 ## Configure
 
     auth:
-        htpasswd:
+        htpasswdhtgroup:
             file: ./htpasswd
             group_file: ./htgroup
             # Maximum amount of users allowed to register, defaults to "+infinity".
