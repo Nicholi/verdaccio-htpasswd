@@ -146,3 +146,136 @@ export function sanityCheck(
 
   return null;
 }
+
+/**
+ * parseHTgroup - convert htgroup lines to object.
+ * htgroup format is groupname separated from list of users by colon.
+ * list of users is space separated
+ * Ex: mygroup: user1 user2 user3
+ *
+ * @param {string} input
+ * @returns {object}
+ */
+export function parseHTgroup(input: string): Object {
+  return input.split('\n').reduce((result, line) => {
+    const args = line.split(':', 2);
+    let groupName = args[0];
+    let groupUsers;
+
+    if (args.length > 1) {
+      // split users
+      groupUsers = args[1].split(' ');
+    } else {
+      // group has no users in it
+      groupUsers = [];
+    }
+
+    result[groupName] = groupUsers;
+
+    return result;
+  }, {});
+}
+
+/**
+ * Serializes our group objects file into lines to write to .htgroup
+ *
+ * @param {object} groupsObj
+ * @returns {string}
+ */
+export function serializeHTgroups(groupsObj: Object): string {
+  let body = '';
+  for (const [groupName, groupUsers] of Object.entries(groupsObj)) {
+    body += `${groupName}: ${groupUsers.join(' ')}`;
+  }
+  return body;
+}
+
+/**
+ * addUserToHTGroup - Add user to group in .htgroup
+ * @param {object} groupsObj
+ * @param {string} user
+ * @param {Array<string>} groups
+ * @returns {boolean} - was groupsObj modified
+ */
+export function addUserToHTGroup(
+  groupsObj: Object,
+  user: string,
+  groups: Array<string>
+): boolean {
+  if (user !== encodeURIComponent(user)) {
+    const err = Error('username should not contain non-uri-safe characters');
+
+    // $FlowFixMe
+    err.status = 409;
+    throw err;
+  }
+
+  let groupsModified = false;
+  groups.forEach(groupName => {
+    // check if each user is already in group
+    let groupUsers = groupsObj[groupName];
+    if (!groupUsers.includes(user)) {
+      // add user
+      groupUsers.push(user);
+      groupsModified = true;
+    }
+  });
+
+  return groupsModified;
+}
+
+/**
+ * Always include user in its groups.
+ *
+ * @param {object} groupsObj
+ * @param {string} user
+ * @returns {Array<string>} - all groups this user belongs to
+ */
+export function getGroupsForUser(
+  groupsObj: Object,
+  user: string
+): Array<string> {
+  // user always at least includes group with its own name
+  let userGroups = [user];
+
+  for (const [groupName, groupUsers] of Object.entries(groupsObj)) {
+    if (groupUsers.includes(user)) {
+      userGroups.push(groupName);
+    }
+  }
+
+  return userGroups;
+}
+
+/**
+ *
+ * @param {string | Array<string>} groups
+ * @returns {Array<string>}
+ */
+export function sanityCheckGroups(
+  groups: string | Array<string>
+): Array<string> {
+  let groupsArr: Array<string>;
+
+  if (!groups) {
+    // log warning (?)
+    groupsArr = [];
+  } else if (typeof groups === 'string') {
+    // treat string as space separated listing of groups
+    groupsArr = groups.split(' ');
+  } else if (Array.isArray(groups)) {
+    groupsArr = [];
+    groups.forEach(group => {
+      if (typeof group !== 'string') {
+        // log warning
+        return;
+      }
+      groupsArr.push(group);
+    });
+  } else {
+    // should log warning
+    groupsArr = [];
+  }
+
+  return groupsArr;
+}

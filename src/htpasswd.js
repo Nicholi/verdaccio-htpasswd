@@ -8,7 +8,12 @@ import {
   unlockFile,
   parseHTPasswd,
   addUserToHTPasswd,
-  sanityCheck
+  sanityCheck,
+  parseHTgroup,
+  serializeHTgroups,
+  addUserToHTGroup,
+  getGroupsForUser,
+  sanityCheckGroups
 } from './utils';
 
 /**
@@ -22,17 +27,21 @@ export default class HTPasswd {
    */
   // flow types
   users: {};
+  groups: {};
   stuff: {};
   config: {};
   verdaccioConfig: {};
   maxUsers: number;
   path: string;
+  groupPath: string;
   logger: {};
   lastTime: any;
+  lastTimeGroup: any;
   // constructor
   constructor(
     config: {
       file: string,
+      group_file: string,
       max_users: number
     },
     stuff: {
@@ -43,6 +52,7 @@ export default class HTPasswd {
     }
   ) {
     this.users = {};
+    this.groups = {};
 
     // config for this module
     this.config = config;
@@ -58,8 +68,9 @@ export default class HTPasswd {
     this.maxUsers = config.max_users ? config.max_users : Infinity;
 
     this.lastTime = null;
+    this.lastTimeGroup = null;
 
-    let { file } = config;
+    let { file, group_file } = config;
 
     if (!file) {
       file = this.verdaccioConfig.users_file;
@@ -68,10 +79,17 @@ export default class HTPasswd {
     if (!file) {
       throw new Error('should specify "file" in config');
     }
+    if (!group_file) {
+      throw new Error('should specify "groupFile" in config');
+    }
 
     this.path = Path.resolve(
       Path.dirname(this.verdaccioConfig.self_path),
       file
+    );
+    this.groupPath = Path.resolve(
+      Path.dirname(this.verdaccioConfig.self_path),
+      group_file
     );
   }
 
@@ -79,7 +97,7 @@ export default class HTPasswd {
    * authenticate - Authenticate user.
    * @param {string} user
    * @param {string} password
-   * @param {function} cd
+   * @param {function} cb
    * @returns {function}
    */
   authenticate(user: string, password: string, cb: Function) {
@@ -87,18 +105,24 @@ export default class HTPasswd {
       if (err) {
         return cb(err.code === 'ENOENT' ? null : err);
       }
-      if (!this.users[user]) {
+
+      let user = this.users[user];
+      if (!user) {
         return cb(null, false);
       }
-      if (!verifyPassword(password, this.users[user])) {
+      if (!verifyPassword(password, user)) {
         return cb(null, false);
       }
 
       // authentication succeeded!
       // return all usergroups this user has access to;
-      // (this particular package has no concept of usergroups, so just return
-      // user herself)
-      return cb(null, [user]);
+      this.reloadGroups(err => {
+        if (err) {
+          return cb(err.code === 'ENOENT' ? null : err);
+        }
+
+        return cb(null, getGroupsForUser(this.groups, user));
+      });
     });
   }
 
@@ -112,18 +136,26 @@ export default class HTPasswd {
    * 6. unlock file
    *
    * @param {string} user
+   * @param {string|Array<string>} groups
    * @param {string} password
    * @param {function} realCb
    * @returns {function}
    */
-  adduser(user: string, password: string, realCb: Function) {
+  adduser(
+    user: string,
+    groups: string | Array<string>,
+    password: string,
+    realCb: Function
+  ) {
     let sanity = sanityCheck(
       user,
+      groups,
       password,
       verifyPassword,
       this.users,
       this.maxUsers
     );
+    let groupsArr: Array<string> = sanityCheckGroups(groups);
 
     // preliminary checks, just to ensure that file won't be reloaded if it's
     // not needed
@@ -170,20 +202,47 @@ export default class HTPasswd {
         return cb(sanity);
       }
 
-      try {
-        body = addUserToHTPasswd(body, user, password);
-      } catch (err) {
-        return cb(err);
-      }
+      if (groupsArr.length > 0) {
+        // we have groups to write
+        this._adduserToGroups(user, groupsArr, (err, result) => {
+          if (err) {
+            cb(err);
+            return;
+          }
 
-      fs.writeFile(this.path, body, err => {
-        if (err) {
+          // continue on with writing users to .htpasswd
+          try {
+            body = addUserToHTPasswd(body, user, password);
+          } catch (err) {
+            return cb(err);
+          }
+
+          fs.writeFile(this.path, body, err => {
+            if (err) {
+              return cb(err);
+            }
+            this.reload(() => {
+              cb(null);
+            });
+          });
+        });
+      } else {
+        // just write user
+        try {
+          body = addUserToHTPasswd(body, user, password);
+        } catch (err) {
           return cb(err);
         }
-        this.reload(() => {
-          cb(null);
+
+        fs.writeFile(this.path, body, err => {
+          if (err) {
+            return cb(err);
+          }
+          this.reload(() => {
+            cb(null);
+          });
         });
-      });
+      }
     });
   }
 
@@ -210,6 +269,82 @@ export default class HTPasswd {
         Object.assign(this.users, parseHTPasswd(buffer));
         callback();
       });
+    });
+  }
+
+  /**
+   * Reload groups
+   * @param {function} callback
+   */
+  reloadGroups(callback: Function) {
+    fs.stat(this.groupPath, (err, stats) => {
+      if (err) {
+        return callback(err);
+      }
+      if (this.lastTimeGroup === stats.mtime) {
+        return callback();
+      }
+
+      this.lastTimeGroup = stats.mtime;
+
+      fs.readFile(this.groupPath, 'utf8', (err, buffer) => {
+        if (err) {
+          return callback(err);
+        }
+
+        Object.assign(this.groups, parseHTgroup(buffer));
+        callback();
+      });
+    });
+  }
+
+  _adduserToGroups(user: string, groups: Array<string>, realCb: Function) {
+    lockAndRead(this.groupPath, (err, res) => {
+      let locked = false;
+
+      // callback that cleans up lock first
+      const cb = err => {
+        if (locked) {
+          unlockFile(this.groupPath, () => {
+            // ignore any error from the unlock
+            realCb(err, !err);
+          });
+        } else {
+          realCb(err, !err);
+        }
+      };
+
+      if (!err) {
+        locked = true;
+      }
+
+      // ignore ENOENT errors, we'll just create .htpasswd in that case
+      if (err && err.code !== 'ENOENT') return cb(err);
+
+      let body = (res || '').toString('utf8');
+      this.groups = parseHTgroup(body);
+
+      let groupsModified = false;
+      try {
+        groupsModified = addUserToHTGroup(this.groups, user, groups);
+      } catch (err) {
+        return cb(err);
+      }
+
+      if (groupsModified) {
+        body = serializeHTgroups(this.groups);
+        fs.writeFile(this.groupPath, body, err => {
+          if (err) {
+            return cb(err);
+          }
+          this.reloadGroups(() => {
+            cb(null);
+          });
+        });
+      } else {
+        // no need to write to file
+        cb(null);
+      }
     });
   }
 }
