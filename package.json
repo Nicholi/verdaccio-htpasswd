@@ -1,7 +1,7 @@
 {
-  "name": "verdaccio-htpasswd",
+  "name": "verdaccio-htpasswd-htgroup",
   "version": "0.2.2",
-  "description": "verdaccio htpasswd auth plugin",
+  "description": "verdaccio htpasswd/htgroup auth plugin",
   "main": "lib/index.js",
   "keywords": [
     "verdaccio",

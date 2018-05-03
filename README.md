@@ -1,22 +1,25 @@
+<!--
 [![CircleCI](https://circleci.com/gh/verdaccio/verdaccio-htpasswd.svg?style=svg)](https://circleci.com/gh/ayusharma/verdaccio-htpasswd) [![codecov](https://codecov.io/gh/ayusharma/verdaccio-htpasswd/branch/master/graph/badge.svg)](https://codecov.io/gh/ayusharma/verdaccio-htpasswd)
+-->
 
-# Verdaccio Module For User Auth Via Htpasswd
+# Verdaccio Module For User Auth Via Htpasswd and Htgroup
 
-`verdaccio-htpasswd` is a default authentication plugin for the [Verdaccio](https://github.com/verdaccio/verdaccio).
+`verdaccio-htpasswd-htgroup` is a default authentication plugin for the [Verdaccio](https://github.com/verdaccio/verdaccio).
 
-> This plugin is being used as dependency after `v3.0.0-beta.x`. The `v2.x` still contains this plugin built-in.
-
+<!--
 ## Install
 
 As simple as running:
 
-    $ npm install -g verdaccio-htpasswd
+    $ npm install -g verdaccio-htpasswd-htgroup
+-->
 
 ## Configure
 
     auth:
         htpasswd:
             file: ./htpasswd
+            group_file: ./htgroup
             # Maximum amount of users allowed to register, defaults to "+infinity".
             # You can set this to -1 to disable registration.
             #max_users: 1000
@@ -35,6 +38,13 @@ If you wish to handle access control using htpasswd file, you can generate
 username/password combination form 
 [here](http://www.htaccesstools.com/htpasswd-generator/) and add it to htpasswd
 file.
+
+## Generate htgroup group/users lists
+
+Each line of the group file contains a groupname followed by a colon, followed by the member usernames separated by spaces.
+
+Example:
+> mygroup: bob joe anne
 
 ## How does it work?
 
