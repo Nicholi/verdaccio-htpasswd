@@ -136,26 +136,18 @@ export default class HTPasswd {
    * 6. unlock file
    *
    * @param {string} user
-   * @param {string|Array<string>} groups
    * @param {string} password
    * @param {function} realCb
    * @returns {function}
    */
-  adduser(
-    user: string,
-    groups: string | Array<string>,
-    password: string,
-    realCb: Function
-  ) {
+  adduser(user: string, password: string, realCb: Function) {
     let sanity = sanityCheck(
       user,
-      groups,
       password,
       verifyPassword,
       this.users,
       this.maxUsers
     );
-    let groupsArr: Array<string> = sanityCheckGroups(groups);
 
     // preliminary checks, just to ensure that file won't be reloaded if it's
     // not needed
@@ -202,46 +194,89 @@ export default class HTPasswd {
         return cb(sanity);
       }
 
-      if (groupsArr.length > 0) {
-        // we have groups to write
-        this._adduserToGroups(user, groupsArr, (err, result) => {
-          if (err) {
-            cb(err);
-            return;
-          }
+      try {
+        body = addUserToHTPasswd(body, user, password);
+      } catch (err) {
+        return cb(err);
+      }
 
-          // continue on with writing users to .htpasswd
-          try {
-            body = addUserToHTPasswd(body, user, password);
-          } catch (err) {
-            return cb(err);
-          }
-
-          fs.writeFile(this.path, body, err => {
-            if (err) {
-              return cb(err);
-            }
-            this.reload(() => {
-              cb(null);
-            });
-          });
-        });
-      } else {
-        // just write user
-        try {
-          body = addUserToHTPasswd(body, user, password);
-        } catch (err) {
+      fs.writeFile(this.path, body, err => {
+        if (err) {
           return cb(err);
         }
+        this.reload(() => {
+          cb(null);
+        });
+      });
+    });
+  }
 
-        fs.writeFile(this.path, body, err => {
+  /**
+   * Add groups for user.
+   *
+   * @param {string} user
+   * @param {string | Array<string>} groups
+   * @param {function} realCb
+   * @returns {function}
+   */
+  addusergroups(
+    user: string,
+    groups: string | Array<string>,
+    realCb: Function
+  ) {
+    let groupsArr: Array<string> = sanityCheckGroups(groups);
+
+    if (groupsArr.length === 0) {
+      // nothing to do
+      return;
+    }
+
+    // else lock and write to file, same as htpasswd
+    lockAndRead(this.groupPath, (err, res) => {
+      let locked = false;
+
+      // callback that cleans up lock first
+      const cb = err => {
+        if (locked) {
+          unlockFile(this.groupPath, () => {
+            // ignore any error from the unlock
+            realCb(err, !err);
+          });
+        } else {
+          realCb(err, !err);
+        }
+      };
+
+      if (!err) {
+        locked = true;
+      }
+
+      // ignore ENOENT errors, we'll just create .htpasswd in that case
+      if (err && err.code !== 'ENOENT') return cb(err);
+
+      let body = (res || '').toString('utf8');
+      this.groups = parseHTgroup(body);
+
+      let groupsModified = false;
+      try {
+        groupsModified = addUserToHTGroup(this.groups, user, groupsArr);
+      } catch (err) {
+        return cb(err);
+      }
+
+      if (groupsModified) {
+        body = serializeHTgroups(this.groups);
+        fs.writeFile(this.groupPath, body, err => {
           if (err) {
             return cb(err);
           }
-          this.reload(() => {
+          this.reloadGroups(() => {
             cb(null);
           });
         });
+      } else {
+        // no need to write to file
+        cb(null);
       }
     });
   }
@@ -295,56 +330,6 @@ export default class HTPasswd {
         Object.assign(this.groups, parseHTgroup(buffer));
         callback();
       });
-    });
-  }
-
-  _adduserToGroups(user: string, groups: Array<string>, realCb: Function) {
-    lockAndRead(this.groupPath, (err, res) => {
-      let locked = false;
-
-      // callback that cleans up lock first
-      const cb = err => {
-        if (locked) {
-          unlockFile(this.groupPath, () => {
-            // ignore any error from the unlock
-            realCb(err, !err);
-          });
-        } else {
-          realCb(err, !err);
-        }
-      };
-
-      if (!err) {
-        locked = true;
-      }
-
-      // ignore ENOENT errors, we'll just create .htpasswd in that case
-      if (err && err.code !== 'ENOENT') return cb(err);
-
-      let body = (res || '').toString('utf8');
-      this.groups = parseHTgroup(body);
-
-      let groupsModified = false;
-      try {
-        groupsModified = addUserToHTGroup(this.groups, user, groups);
-      } catch (err) {
-        return cb(err);
-      }
-
-      if (groupsModified) {
-        body = serializeHTgroups(this.groups);
-        fs.writeFile(this.groupPath, body, err => {
-          if (err) {
-            return cb(err);
-          }
-          this.reloadGroups(() => {
-            cb(null);
-          });
-        });
-      } else {
-        // no need to write to file
-        cb(null);
-      }
     });
   }
 }
