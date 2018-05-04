@@ -6,6 +6,12 @@ import HTPasswd from './htpasswd';
  * @param {object} stuff
  * @returns {object}
  */
-export default function(config, stuff) {
+function HTPasswdWrapper(config, stuff) {
   return new HTPasswd(config, stuff);
 }
+
+export default HTPasswdWrapper;
+
+// necessary for verdaccio 2.x to be happy when loading plugin
+// uncomment when 3.x release, but remember will break 2.x
+module.exports = HTPasswdWrapper;
