@@ -126,7 +126,7 @@ export function sanityCheck(
   hash = users[user];
 
   if (hash) {
-    const auth = verifyFn(password, users[user]);
+    const auth = verifyFn(password, hash);
     if (auth) {
       err = Error('username is already registered');
       // $FlowFixMe
@@ -182,9 +182,12 @@ export function parseHTgroup(input: string): Object {
  * @param {object} groupsObj
  * @returns {string}
  */
-export function serializeHTgroups(groupsObj: Object): string {
+export function serializeHTgroups(groupsObj: {
+  [groupName: string]: Array<string>
+}): string {
   let body = '';
-  for (const [groupName, groupUsers] of Object.entries(groupsObj)) {
+  for (const groupName of Object.keys(groupsObj)) {
+    const groupUsers = groupsObj[groupName];
     body += `${groupName}: ${groupUsers.join(' ')}`;
   }
   return body;
@@ -232,13 +235,14 @@ export function addUserToHTGroup(
  * @returns {Array<string>} - all groups this user belongs to
  */
 export function getGroupsForUser(
-  groupsObj: Object,
+  groupsObj: { [groupName: string]: Array<string> },
   user: string
 ): Array<string> {
   // user always at least includes group with its own name
   let userGroups = [user];
 
-  for (const [groupName, groupUsers] of Object.entries(groupsObj)) {
+  for (const groupName of Object.keys(groupsObj)) {
+    const groupUsers = groupsObj[groupName];
     if (groupUsers.includes(user)) {
       userGroups.push(groupName);
     }

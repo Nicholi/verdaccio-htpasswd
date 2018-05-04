@@ -106,11 +106,11 @@ export default class HTPasswd {
         return cb(err.code === 'ENOENT' ? null : err);
       }
 
-      let user = this.users[user];
-      if (!user) {
+      let userHash = this.users[user];
+      if (!userHash) {
         return cb(null, false);
       }
-      if (!verifyPassword(password, user)) {
+      if (!verifyPassword(password, userHash)) {
         return cb(null, false);
       }
 
