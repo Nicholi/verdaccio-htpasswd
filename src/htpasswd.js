@@ -2,6 +2,7 @@
 
 import fs from 'fs';
 import Path from 'path';
+import type { Config, Logger } from '@verdaccio/types';
 import {
   verifyPassword,
   lockAndRead,
@@ -24,6 +25,8 @@ export default class HTPasswd {
    *
    * @param {*} config htpasswd file
    * @param {object} stuff config.yaml in object from
+   * @param {Config} stuff.config
+   * @param {Logger} stuff.logger
    */
   // flow types
   users: {};
@@ -45,10 +48,8 @@ export default class HTPasswd {
       max_users: number
     },
     stuff: {
-      [config: string]: {
-        users_file: string,
-        self_path: string
-      }
+      config: Config,
+      logger: Logger
     }
   ) {
     this.users = {};
@@ -83,14 +84,9 @@ export default class HTPasswd {
       throw new Error('should specify "groupFile" in config');
     }
 
-    this.path = Path.resolve(
-      Path.dirname(this.verdaccioConfig.self_path),
-      file
-    );
-    this.groupPath = Path.resolve(
-      Path.dirname(this.verdaccioConfig.self_path),
-      group_file
-    );
+    let selfPath = this.verdaccioConfig['self_path'];
+    this.path = Path.resolve(Path.dirname(selfPath), file);
+    this.groupPath = Path.resolve(Path.dirname(selfPath), group_file);
   }
 
   /**
